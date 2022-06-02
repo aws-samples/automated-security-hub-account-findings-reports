@@ -28,7 +28,7 @@ The AWS CloudFormation template will create a Lambda, Lambda permissions, a Clou
 
 ## Target architecture 
 
-![Architecture Diagram](https://github.com/ aws-samples/automated-security-hub-account-findings-reports/blob/main/Solution Diagram.PNG?raw=true)
+![Architecture Diagram](https://github.com/aws-samples/automated-security-hub-account-findings-reports/blob/main/Solution Diagram.PNG?raw=true)
 
 ## Automation and scale
 
