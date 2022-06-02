@@ -1,4 +1,4 @@
-## Automated SEcurity Hub Account Findings Reports
+## Automated Security Hub Account Findings Reports
 
 Many customers take advantage of AWS Security Hub allowing them to centrally manage many member accounts from a single AWS Security Hub account. This pattern takes all of the member accounts, creates a custom insight for each account, creates an Amazon SNS topic for each account, and uses Amazon SNS sends the findings to the account's email that is listed in AWS Security Hub automatically on a set schedule.
 
