@@ -1,0 +1,202 @@
+#Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#SPDX-License-Identifier: MIT-0
+#
+#Permission is hereby granted, free of charge, to any person obtaining a copy of this
+#software and associated documentation files (the "Software"), to deal in the Software
+#without restriction, including without limitation the rights to use, copy, modify,
+#merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+#permit persons to whom the Software is furnished to do so.
+#
+#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+#INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+#PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+#HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+#OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+#SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Description: >-
+  AWS CloudFormation Sample Template for Periodic Security Hub Organization Reports. **WARNING** This
+  template creates a Lambda, CloudWatch Event Rule, and an IAM Role. Upon execution it will create 
+  custom insights in AWS Security Hub and Amazon SNS topics.
+  You will be billed for the AWS resources used if you create a stack from this template.
+Resources:
+  CloudWatchCronJob:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Scheduled invokcation of the Lambda
+      Name: "SHARInvokeLabdaCronJob"
+      ScheduleExpression: "cron(0 8 1 * ? *)"
+      Targets: 
+        -
+          Arn:
+            Fn::GetAtt:
+              - "SHARLambda"
+              - "Arn"
+          Id: "TargetSHARLambda"
+  LambdaCloudwatchInvokePermission:
+    Type: AWS::Lambda::Permission
+    DependsOn: SHARLambda
+    Properties:
+      FunctionName: SHARLambda
+      Principal: "events.amazonaws.com"
+      Action: "lambda:InvokeFunction"
+      SourceArn:
+        Fn::GetAtt:
+          - "CloudWatchCronJob"
+          - "Arn"
+  SHARLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SHARLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 
+             - sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'SecurityHub:ListMembers'
+                  - 'SecurityHub:GetInsights'
+                  - 'SecurityHub:CreateInsight'
+                  - 'SecurityHub:GetInsightResults'
+                  - 'SNS:ListTopics'
+                  - 'SNS:CreateTopic'
+                  - 'SNS:ListSubscriptionsByTopic'
+                  - 'SNS:Publish'
+                Resource: '*'  
+  SHARLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: "This Lambda performs the insight and SNS topic creation, then send out notifications to the accounts"
+      FunctionName: SHARLambda
+      Role: !GetAtt SHARLambdaRole.Arn
+      Runtime: python3.8
+      Timeout: 180
+      Handler: index.lambda_handler
+      Code: 
+        ZipFile: |
+          import json
+          import boto3
+
+          def lambda_handler(event, context):
+              #Create Boto3 Clients
+              SecHubClient = boto3.client('securityhub')
+              SNSClient = boto3.client('sns')
+              
+              #Get the list of accounts that have accepted invitiation to the Org's Security Hub
+              SecHubAccounts = SecHubClient.list_members(OnlyAssociated=True)
+              Accounts = (list(SecHubAccounts.values())[1])
+              
+              #Make a list of Security Hub member account ID's
+              AccountList = []
+              AccountListWithNoSubscribers = []
+              AccountTopicARNs = {}
+              for account in Accounts:
+                  AccountList.append((account['AccountId']))
+                  
+              #Get all of the current Security Hub Insights
+              Insights = SecHubClient.get_insights()
+              InsightList = Insights['Insights']
+              
+              #Get all of the current SNS Topics
+              Topics = SNSClient.list_topics()
+              
+              #Determine if the insight exists for the account, if not create it.
+              for account in AccountList:
+                  InsightName = account + "MonthyReportInsight"
+                  CreateInsight = False
+                  for insight in InsightList:
+                      if InsightName in insight['Name']:
+                          CreateInsight = True
+                          break
+                  if CreateInsight is False:
+                      SecHubClient.create_insight(Name=InsightName, Filters={'AwsAccountId':[{'Value':account,'Comparison':'EQUALS'}]}, GroupByAttribute='ComplianceStatus')
+                      
+                  #Determine if the SNS Topic exists
+                  TopicList = (list(Topics.values())[0])
+                  TopicExists = False
+                  TopicName = account + "MonthyReportTopic"
+                  for topic in TopicList:
+                      TopicArn = topic['TopicArn']
+                      SplitArn = TopicArn.rpartition(':')
+                      #If the topic already exists, get subscriptions. If no subscriptions then add it to the AccountsListWithNoSuscribers
+                      if SplitArn[2] == TopicName:
+                          TopicExists = True
+                          TopicSubcriptions = SNSClient.list_subscriptions_by_topic(TopicArn=topic['TopicArn'])
+                          AccountTopicARNs[account] = topic['TopicArn']
+                          if not TopicSubcriptions['Subscriptions']:
+                              AccountListWithNoSubscribers.append(account)
+                          break
+                  #If the topic does not exist, create the topic
+                  if TopicExists is False:
+                      SNSClient.create_topic(Name=TopicName, Attributes={'FifoTopic':'false'})
+                      SNSTopicArn = SplitArn[0] + ":" + TopicName
+                      AccountTopicARNs[account] = SNSTopicArn
+                      SNSEmail = ""
+                      for a in Accounts:
+                          if a['AccountId'] == account:
+                              #SecurityHub.list_members doesn't always pass the email portion of the account along. If the account has an email then it should subscribe the account's email.
+                              try:
+                                  if a['Email']:
+                                      SNSEmail = a['Email']
+                                      SNSClient.subscribe(TopicArn=SNSTopicArn,Protocol='email',Endpoint=SNSEmail)
+                                  else:
+                                      print(f'The account {account} had no email listed. You need to manually update the SNS topic {TopicName} with an email to receive notifications')
+                                      AccountListWithNoSubscribers.append(account)
+                              except:
+                                  print(f'The account {account} had no email listed. You need to manually update the SNS topic {TopicName} with an email to receive notifications')
+                                  AccountListWithNoSubscribers.append(account)
+              
+              #Update the list of insights and topics to add in any new insights or topics
+              Insights = SecHubClient.get_insights()
+              InsightList = Insights['Insights']
+              Topics = SNSClient.list_topics()
+              TopicList = (list(Topics.values())[0])
+
+              #Go through the list of insights and get and send the results
+              for account in AccountList:    
+                  EmailSubject = "Monthy Security Hub Findings for Account " + account
+                  InsightName = account + "MonthyReportInsight"
+                  TopicName = account + "MonthyReportTopic"
+                  TopicArn = AccountTopicARNs[account]
+                  EmailMessage = ""
+
+                  #Determine if the SNS Topic exists and has a subscrption. If not fail out because no message will be sent.
+                  if account in AccountListWithNoSubscribers:
+                      print(f'The SNS Topic {TopicName} does not have any subscriptions to send the report to. Please manually add a subscription')
+                      continue
+                  
+                  #Find the account's insight to get the message info for the report
+                  for insight in InsightList:
+                      InsightResults = ""
+                      if InsightName == insight['Name']:
+                          InsightArn = insight['InsightArn']
+                          InsightResults = SecHubClient.get_insight_results(InsightArn=InsightArn)
+                    
+                          #Format the Message:
+                          if InsightResults != "":
+                              EmailMessage = "Account " + account + " has the following Security Hub findings: \n"
+                              ResultValues = InsightResults['InsightResults']['ResultValues']
+                              for items in ResultValues:
+                                  Attribute = items['GroupByAttributeValue']
+                                  Count = str(items['Count'])
+                                  EmailMessage = EmailMessage + Attribute + ": " + Count + " Findings \n"
+                              break
+                          else:
+                              print(f'There appears to be no results for Insight {InsightResults}. This should not happen and requires more investigation.')
+                  
+                  #Send the report
+                  print(f'Sending a report for account {account} to SNS Topic {TopicName}')
+                  SNSClient.publish(TopicArn=TopicArn,Message=EmailMessage,Subject=EmailSubject)
