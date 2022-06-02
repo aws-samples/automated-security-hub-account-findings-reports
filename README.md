@@ -43,7 +43,7 @@ This tells the sample to run at 0800 UTC on the first if every month. Informatio
 
 Line 125: SecHubClient.create_insight(Name=InsightName, Filters={'AwsAccountId':[{'Value':account,'Comparison':'EQUALS'}]}, GroupByAttribute='ComplianceStatus')
 
-This line creates the custom insight that the report is based off of. Information on how to modify the custom insight to meet your needs can be found [here](SecHubClient.create_insight(Name=InsightName, Filters={'AwsAccountId':[{'Value':account,'Comparison':'EQUALS'}]}, GroupByAttribute='ComplianceStatus'))
+This line creates the custom insight that the report is based off of. Information on how to modify the custom insight to meet your needs can be found [here](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/securityhub.html#SecurityHub.Client.create_insight)
 
 ## Security
 
