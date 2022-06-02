@@ -39,7 +39,7 @@ This solution is fully automated. The code is highly customizable with the abili
 
 Line 28: ScheduleExpression: "cron(0 8 1 * ? *)"
 
-This tells the sample to run at 0800 UTC on the first if every month. Informationon how to modify this to run, when and at the frequency, you destire can be found [here](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html)
+This tells the sample to run at 0800 UTC on the first if every month. Information on how to modify this to run, when and at the frequency, you destire can be found [here](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html)
 
 Line 125: SecHubClient.create_insight(Name=InsightName, Filters={'AwsAccountId':[{'Value':account,'Comparison':'EQUALS'}]}, GroupByAttribute='ComplianceStatus')
 
