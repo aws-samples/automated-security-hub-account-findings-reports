@@ -24,30 +24,30 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Description: Scheduled invokcation of the Lambda
-      Name: "SHARInvokeLabdaCronJob"
+      Name: "ASHAFRInvokeLabdaCronJob"
       ScheduleExpression: "cron(0 8 1 * ? *)"
       Targets: 
         -
           Arn:
             Fn::GetAtt:
-              - "SHARLambda"
+              - "ASHAFRLambda"
               - "Arn"
-          Id: "TargetSHARLambda"
+          Id: "TargetASHAFRLambda"
   LambdaCloudwatchInvokePermission:
     Type: AWS::Lambda::Permission
-    DependsOn: SHARLambda
+    DependsOn: ASHAFRLambda
     Properties:
-      FunctionName: SHARLambda
+      FunctionName: ASHAFRLambda
       Principal: "events.amazonaws.com"
       Action: "lambda:InvokeFunction"
       SourceArn:
         Fn::GetAtt:
           - "CloudWatchCronJob"
           - "Arn"
-  SHARLambdaRole:
+  ASHAFRLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: SHARLambdaRole
+      RoleName: ASHAFRLambdaRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -76,13 +76,13 @@ Resources:
                   - 'SNS:ListSubscriptionsByTopic'
                   - 'SNS:Publish'
                 Resource: '*'  
-  SHARLambda:
+  ASHAFRLambda:
     Type: AWS::Lambda::Function
     Properties:
       Description: "This Lambda performs the insight and SNS topic creation, then send out notifications to the accounts"
-      FunctionName: SHARLambda
-      Role: !GetAtt SHARLambdaRole.Arn
-      Runtime: python3.8
+      FunctionName: ASHAFRLambda
+      Role: !GetAtt ASHAFRLambdaRole.Arn
+      Runtime: python3.9
       Timeout: 180
       Handler: index.lambda_handler
       Code: 
@@ -90,11 +90,12 @@ Resources:
           import json
           import boto3
 
+          #Create Boto3 Clients
+          SecHubClient = boto3.client('securityhub')
+          SNSClient = boto3.client('sns')
+
           def lambda_handler(event, context):
-              #Create Boto3 Clients
-              SecHubClient = boto3.client('securityhub')
-              SNSClient = boto3.client('sns')
-              
+          
               #Get the list of accounts that have accepted invitiation to the Org's Security Hub
               SecHubAccounts = SecHubClient.list_members(OnlyAssociated=True)
               Accounts = (list(SecHubAccounts.values())[1])
@@ -115,7 +116,7 @@ Resources:
               
               #Determine if the insight exists for the account, if not create it.
               for account in AccountList:
-                  InsightName = account + "MonthyReportInsight"
+                  InsightName = account + "MonthlyReportInsight"
                   CreateInsight = False
                   for insight in InsightList:
                       if InsightName in insight['Name']:
@@ -127,7 +128,7 @@ Resources:
                   #Determine if the SNS Topic exists
                   TopicList = (list(Topics.values())[0])
                   TopicExists = False
-                  TopicName = account + "MonthyReportTopic"
+                  TopicName = account + "MonthlyReportTopic"
                   for topic in TopicList:
                       TopicArn = topic['TopicArn']
                       SplitArn = TopicArn.rpartition(':')
@@ -167,9 +168,9 @@ Resources:
 
               #Go through the list of insights and get and send the results
               for account in AccountList:    
-                  EmailSubject = "Monthy Security Hub Findings for Account " + account
-                  InsightName = account + "MonthyReportInsight"
-                  TopicName = account + "MonthyReportTopic"
+                  EmailSubject = "Monthly Security Hub Findings for Account " + account
+                  InsightName = account + "MonthlyReportInsight"
+                  TopicName = account + "MonthlyReportTopic"
                   TopicArn = AccountTopicARNs[account]
                   EmailMessage = ""
 
