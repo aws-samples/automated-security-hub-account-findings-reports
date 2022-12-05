@@ -37,11 +37,11 @@ This solution is fully automated. The code is highly customizable with the abili
 
 ## Useful Modifications
 
-Line 28: ScheduleExpression: "cron(0 8 1 * ? *)"
+Line 86: ScheduleExpression: "cron(0 8 1 * ? *)"
 
 This tells the sample to run at 0800 UTC on the first if every month. Information on how to modify this to run, when and at the frequency, you desire can be found [here](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html)
 
-Line 125: SecHubClient.create_insight(Name=InsightName, Filters={'AwsAccountId':[{'Value':account,'Comparison':'EQUALS'}]}, GroupByAttribute='ComplianceStatus')
+Line 184: SecHubClient.create_insight(Name=InsightName, Filters={'AwsAccountId':[{'Value':account,'Comparison':'EQUALS'}]}, GroupByAttribute='ComplianceStatus')
 
 This line creates the custom insight that the report is based off of. Information on how to modify the custom insight to meet your needs can be found [here](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/securityhub.html#SecurityHub.Client.create_insight)
 
